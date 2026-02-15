@@ -91,19 +91,17 @@ Files:
 
 ### Client Startup Flow
 1. Compute runtime paths.
-2. Probe socket with short timeout and ping request.
-3. If unavailable:
-   - Acquire spawn coordination lock (to avoid stampede).
-   - Recheck socket.
-   - Spawn same binary with `--daemon` and detached stdio.
-   - Wait for readiness with bounded retry/backoff.
+2. Probe daemon lock state via non-blocking exclusive lock attempt on `bb.lock`.
+   - If lock is held (`WouldBlock`), daemon is considered running/starting.
+   - If lock is free, release probe lock immediately and spawn same binary with `--daemon`.
+3. Wait for socket readiness with bounded retry/backoff.
 4. Send request over socket.
 5. Return response to shell wrapper contract.
 
 ### Daemon Startup Flow
 1. Acquire exclusive lock (`bb.lock`).
-2. Validate existing pid/socket; clean stale artifacts safely.
-3. Write pid file atomically.
+2. If lock cannot be acquired (`WouldBlock`), exit immediately (singleton enforcement).
+3. Keep lock fd open for whole daemon lifetime (OS releases lock on crash/exit).
 4. Bind Unix socket with user-only permissions.
 5. Start async request loop.
 6. Handle shutdown signals; cleanup pid/socket/lock.
@@ -119,7 +117,7 @@ Files:
 - Reject malformed/oversized payloads.
 - Set client timeouts and retry policy.
 - Use idempotent ping handshake.
-- Handle daemon crash recovery and stale lock/pid cleanup.
+- Rely on OS lock release on daemon crash/exit; never trust lock-file existence alone.
 
 ## Dependencies (Planned)
 - `clap` for CLI parsing and mode flags.
@@ -128,6 +126,7 @@ Files:
 - `thiserror` and/or `anyhow` for error handling.
 - `tracing`, `tracing-subscriber` for structured logs.
 - `directories` (or `dirs`) for OS-aware runtime paths.
+- `fs2` for cross-platform file locking (`try_lock_exclusive`).
 - `nix` (optional) for Unix process/session utilities if needed.
 
 ## Implementation Roadmap (Decision-Complete)
@@ -184,10 +183,8 @@ Files:
 ## Known Risks / Mitigations
 - Bash prefill behavior varies by readline/shell environment.
   - Mitigation: prompt-command approach plus tested fallback to history insertion.
-- Stale runtime artifacts after crash.
-  - Mitigation: startup validation and safe cleanup logic.
 - Multi-client spawn race.
-  - Mitigation: spawn coordination lock and double-check probe.
+  - Mitigation: daemon-level exclusive lock guarantees single active daemon.
 
 ## Assumptions and Defaults
 - Default shell targets are Bash and Zsh only.

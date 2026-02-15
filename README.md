@@ -10,7 +10,8 @@ The project uses a single-binary client/server design:
 
 This repository is in scaffold stage:
 - project structure and architecture are defined
-- runtime logic (IPC lifecycle, daemon management, LLM provider, shell prefill behavior) is still in progress
+- daemon lock probing/spawn and basic Unix socket daemon loop are in place
+- request processing, LLM integration, and shell prefill behavior are still in progress
 
 See `AGENTS.md` for the full architecture and roadmap.
 
@@ -45,6 +46,14 @@ Optional auto-format:
 ```bash
 cargo fmt --all
 ```
+
+## Daemon Lock Policy
+
+Daemon liveness/singleton relies on OS-level exclusive locking over `bb.lock`:
+- client probes lock state via non-blocking exclusive lock attempt
+- if lock is free, client releases probe lock immediately and spawns daemon
+- daemon acquires and holds exclusive lock for its whole lifetime
+- lock-file existence alone is not treated as authoritative
 
 ## Shell Integration (Planned)
 

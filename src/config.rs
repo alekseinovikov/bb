@@ -43,6 +43,11 @@ impl RuntimeConfig {
 }
 
 impl RuntimePaths {
+    pub fn ensure_runtime_dir(&self) -> anyhow::Result<()> {
+        std::fs::create_dir_all(&self.runtime_dir)?;
+        Ok(())
+    }
+
     fn resolve(
         socket_override: Option<PathBuf>,
         pid_override: Option<PathBuf>,
